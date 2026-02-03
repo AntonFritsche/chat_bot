@@ -3,7 +3,7 @@ import torch
 import asyncio
 import easyocr
 import random
-import time
+import os
 
 from mss import mss
 from PIL import Image
@@ -177,7 +177,7 @@ class ChatBot:
         """checks if new tasks are available"""
         while True:
             # task logik
-            if pyautogui.locateOnScreen("waiting_for_session.png") is not None:
+            if pyautogui.locateOnScreen("screenshots/waiting_for_session.png") is not None:
                 return True
 
             await asyncio.sleep(5)
@@ -204,6 +204,10 @@ class ChatBot:
                 answer = self.generate_message()
                 self.write_message(answer)
                 self.log_activity()
+                os.remove("screenshots/customer_data.png")
+                os.remove("screenshots/customer_custom_data.png")
+                os.remove("screenshots/moderator_data.png")
+                os.remove("screenshots/moderator_custom_data.png")
 
             delta = datetime.now() - self.start_time
 
