@@ -177,7 +177,7 @@ class ChatBot:
         """checks if new tasks are available"""
         while True:
             # task logik
-            if pyautogui.locateOnScreen("screenshots/waiting_for_session.png") is not None:
+            if pyautogui.locateOnScreen("screenshots/waiting_for_session.png") is None:
                 return True
 
             await asyncio.sleep(5)
