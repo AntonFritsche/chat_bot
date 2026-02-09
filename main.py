@@ -4,24 +4,26 @@ import asyncio
 import easyocr
 import random
 import os
+import time
 
 from mss import mss
 from PIL import Image
 from datetime import datetime
-from transformers import pipeline
+from llama_cpp import Llama
 
 
 class ChatBot:
-    def __init__(self, name: str, time: int, llm: str, **kwargs):
+    def __init__(self, name: str, time: int, model: str, **kwargs):
         super.__init__(**kwargs)
         self.name: str = name
         self.start_time: datetime = datetime.now()
         self.time: int = time
-        self.llm: str = llm
-        self.pipe = None
+        self.model: str = model
+        self.llm = None
 
         self.number_messages: int = 0
-        self.context: list = []
+        self.context_customer: list = []
+        self.context_moderator: list = []
         self.customer_data: dict = {
             "Name": "",
             "Age": "",
@@ -45,10 +47,10 @@ class ChatBot:
 
     def write_message(self, msg: str):
         """writes a message to the textbox in the chat and sends it"""
-        pyautogui.moveTo(x=1000, y=1000, duration=1) # click into the message field
+        pyautogui.moveTo(x=1000, y=1000, duration=1)  # click into the message field
         pyautogui.click()
         pyautogui.typewrite(msg, interval=0.08)
-        pyautogui.moveTo(x=1000, y=1000, duration=1)
+        pyautogui.moveTo(x=1000, y=1000, duration=1)  # click the on the "Send message" button
         pyautogui.click()
 
         self.number_messages += 1
@@ -59,40 +61,29 @@ class ChatBot:
 
     def generate_message(self):
         """generates a message based on the previous messages"""
-        formatted_message = [{
-            "role": "system",
-            "content": f"""Du bist ein empathischer Begleiter. Nutze die folgenden Profile für deine Identität und dein Wissen über den Kunden.
-            
-            DEIN PROFIL:
-            {self.moderator_data}
-            
-            KUNDEN PROFIL:
-            {self.customer_data}
-            
-            RICHTLINIEN:
-            - Antworte authentisch und warm.
-            - Nutze die vorletzte Nachricht nur als Kontext für die Stimmung.
-            - Antworte DIREKT nur auf die aktuellste Nachricht."""
-            },
-            {"role": "user", "content": f"Bisheriger Kontext: {self.context[0]}"},
-            {"role": "assistant", "content": "Verstanden, ich behalte das im Hinterkopf."},
-            {"role": "user", "content": self.context[1]}
-        ]
+        system_content = f"""Du bist ein empathischer Begleiter...
+        DEIN PROFIL: {self.moderator_data}
+        KUNDEN PROFIL: {self.customer_data}"""
 
-        prompt = self.pipe.tokenizer.apply_chat_template(
-            formatted_message,
-            tokenize=False,
-            add_generation_prompt=True
+        full_prompt = f"""<|im_start|>system
+        {system_content}<|im_end|>
+        <|im_start|>user
+        Bisheriger Kontext: {self.context_customer[0]}<|im_end|>
+        <|im_start|>assistant
+        {self.context_moderator[0]}<|im_end|>
+        <|im_start|>user
+        {self.context_customer[1]} [[[thinking]]]<|im_end|>
+        <|im_start|>assistant
+        """
+
+        response = self.llm(
+            full_prompt,
+            max_tokens=500,
+            stop=["<|im_end|>", "user:", "USER:"],
+            temperature=0.7
         )
 
-        output = self.pipe(
-            prompt,
-            max_new_tokens=500,
-            do_sample=True,
-            temperature=0.75,
-            repetition_penalty=1.1
-        )
-        return output[0]['generated_text']
+        return response["choices"][0]["text"]
 
     def collect_customer_data(self):
         """collects the customer's data"""
@@ -104,7 +95,8 @@ class ChatBot:
             customer_custom_data_image = sct.grab(monitur_customer_custom_data)
 
             customer_image = Image.frombytes("RGB", customer_image.size, customer_image.bgra, "raw", "BGRX")
-            customer_custom_data_image = Image.frombytes("RGB", customer_custom_data_image.size, customer_custom_data_image.bgra, "raw", "BGRX")
+            customer_custom_data_image = Image.frombytes("RGB", customer_custom_data_image.size,
+                                                         customer_custom_data_image.bgra, "raw", "BGRX")
 
             customer_image.save("screenshots/customer_data.png")
             customer_custom_data_image.save("screenshots/customer_custom_data.png")
@@ -133,11 +125,11 @@ class ChatBot:
             moderator_custom_data_image = sct.grab(monitor_moderator_custom_data)
 
             moderator_image = Image.frombytes("RGB", moderator_image.size, moderator_image.bgra, "raw", "BGRX")
-            moderator_custom_data_image = Image.frombytes("RGB", moderator_custom_data_image.size, moderator_custom_data_image.bgra, "raw", "BGRX")
+            moderator_custom_data_image = Image.frombytes("RGB", moderator_custom_data_image.size,
+                                                          moderator_custom_data_image.bgra, "raw", "BGRX")
 
             moderator_image.save("screenshots/moderator_data.png")
             moderator_custom_data_image.save("screenshots/moderator_custom_data.png")
-
 
         reader = easyocr.Reader(['de', 'en'], gpu=False)
         moderator_text = reader.readtext('screenshots/moderator_data.png', detail=0)
@@ -155,16 +147,12 @@ class ChatBot:
 
     def load_llm(self):
         """loads the weights of the llm"""
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-        self.pipe = pipeline(
-            "text-generation",
-            model=self.llm,
-            model_kwargs={
-                "torch_dtype": torch.bfloat16,
-                "low_cpu_mem_usage": True
-            },
-            device=device,
+        self.llm = Llama(
+            model_path=self.model,
+            n_gpu_layers=-1, # all layers in gpu
+            n_ctx=8192, # context size
+            n_threads=8, # cpu core for initial load
+            verbose=True
         )
 
     def log_activity(self):
@@ -177,25 +165,32 @@ class ChatBot:
         """checks if new tasks are available"""
         while True:
             # task logik
-            if pyautogui.locateOnScreen("screenshots/waiting_for_session.png") is None:
+            with mss() as sct:
+                waiting_for_session_monitor = {"top": 0, "left": 0, "width": 0, "height": 0}
+                waiting_for_session = sct.grab(waiting_for_session_monitor)
+                waiting_for_session = Image.frombytes("RGB", waiting_for_session.size, waiting_for_session.bgra, "raw",
+                                                      "BGRX")
+                waiting_for_session.save("screenshots/waiting_for_session.png")
+
+            reader = easyocr.Reader(['de', 'en'], gpu=False)
+            moderator_text = reader.readtext('screenshots/waiting_for_session.png', detail=0)
+            if moderator_text == "Please wait for your next session...":
                 return True
 
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
     async def run(self):
         """runs the chatbot"""
         self.load_llm()
-        time = datetime.now()
-        delta = time - self.start_time
+        delta = datetime.now() - self.start_time
         while delta.total_seconds() < self.time:
-            task = await self.checks_new_task.get()
-
-            if task:
-                # collects data
+            if await self.checks_new_task():
+                # random wait time
                 random.seed()
                 random_wait_time = random.random() * 5
                 time.sleep(random_wait_time)
 
+                # collects data
                 self.collect_messages()
                 self.collect_customer_data()
                 self.collect_moderator_data()
@@ -208,11 +203,41 @@ class ChatBot:
                 os.remove("screenshots/customer_custom_data.png")
                 os.remove("screenshots/moderator_data.png")
                 os.remove("screenshots/moderator_custom_data.png")
+                os.remove("screenshots/waiting_for_session.png")
+
+            delta = datetime.now() - self.start_time
+
+    async def test(self):
+        """runs the chatbot as a test"""
+        self.load_llm()
+        delta = datetime.now() - self.start_time
+        while delta.total_seconds() < self.time:
+            if await self.checks_new_task():
+                # random wait time
+                random.seed()
+                random_wait_time = random.random() * 5
+                time.sleep(random_wait_time)
+
+                # collects data
+                self.collect_messages()
+                self.collect_customer_data()
+                self.collect_moderator_data()
+
+                # generate a response
+                answer = self.generate_message()
+                print("\n", answer, "\n")
+                self.log_activity()
+                os.remove("screenshots/customer_data.png")
+                os.remove("screenshots/customer_custom_data.png")
+                os.remove("screenshots/moderator_data.png")
+                os.remove("screenshots/moderator_custom_data.png")
+                os.remove("screenshots/waiting_for_session.png")
 
             delta = datetime.now() - self.start_time
 
 
-
 if __name__ == '__main__':
-    model = "VibeStudio/Nidum-Llama-3.2-3B-Uncensored"
+    # link: https://huggingface.co/mradermacher/Mistral-Nemo-2407-12B-Thinking-Claude-Gemini-GPT5.2-Uncensored-HERETIC-GGUF
+    model = "mradermacher/Mistral-Nemo-2407-12B-Thinking-Claude-Gemini-GPT5.2-Uncensored-HERETIC-GGUF"
+    # ChatBot("Testbot", 1000, model).run()
 
