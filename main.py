@@ -20,6 +20,7 @@ class ChatBot:
         self.time: int = time
         self.model: str = model
         self.llm = None
+        self.session: bool = False
 
         self.number_messages: int = 0
         self.context_customer: list = []
@@ -49,7 +50,7 @@ class ChatBot:
         """writes a message to the textbox in the chat and sends it"""
         pyautogui.moveTo(x=1000, y=1000, duration=1)  # click into the message field
         pyautogui.click()
-        pyautogui.typewrite(msg, interval=0.08)
+        pyautogui.typewrite(msg, interval=0.3)
         pyautogui.moveTo(x=1000, y=1000, duration=1)  # click the on the "Send message" button
         pyautogui.click()
 
@@ -63,7 +64,20 @@ class ChatBot:
         """generates a message based on the previous messages"""
         system_content = f"""Du bist ein empathischer Begleiter...
         DEIN PROFIL: {self.moderator_data}
-        KUNDEN PROFIL: {self.customer_data}"""
+        KUNDEN PROFIL: {self.customer_data}
+        
+        REGELN:
+        - Immer individuell formulieren – kein Copy-Paste erlaubt.
+        - Groß-/Kleinschreibung und Satzzeichen beachten: ss statt ß schreiben (z. B. Strasse, muessen, Fuss).
+        - Immer eine Frage einbauen, um den Chat am Laufen zu halten.
+        - Freundlich bleiben, auf Kunden eingehen, Fragen beantworten, Kunden „erziehen“ (sanft lenken).
+        - Vom Fake erzählen: peinliche/lustige/erlebnisreiche Stories einbauen → Bindung schaffen, Interesse steigern.
+        - Nicht um Bilder betteln
+        - Bei „nicht genug Credits“: besonders heiß / animierend / lockend schreiben, damit er auflädt.
+        - Bei Reaktivierungen (lange Pause): extra Mühe geben, Fragen stellen, nichts Sinnloses schreiben.
+        - Keine festen Treffen vereinbaren: kein Ort, keine Zeit, kein Tag nennen/bestätigen – immer offen/vage lassen („irgendwann mal“, „wäre schön“ etc.).
+        - Bei Nummern/Mails: nicht schreiben „ich sehe sie nicht“ – einfach bedanken und vage antworten („hab notiert, melde mich später“).
+        """
 
         full_prompt = f"""<|im_start|>system
         {system_content}<|im_end|>
@@ -161,6 +175,27 @@ class ChatBot:
         print(f"Chatbot {self.name} has been active for {uptime} seconds ({uptime / 3600:.2f} hours)")
         print(f"Total number of messages sent: {self.number_messages}")
 
+    def check_prosed_msg(self):
+        """checks if a message is being proposed to use"""
+        with mss() as sct:
+            check_msg_monitor = {"top": 0, "left": 0, "width": 0, "height": 0}
+            check_proposed_msg = sct.grab(check_msg_monitor)
+            check_proposed_msg = Image.frombytes("RGB", check_proposed_msg.size, check_proposed_msg.bgra, "raw",
+                                                  "BGRX")
+            check_proposed_msg.save("screenshots/check_proposed_msg.png")
+
+        reader = easyocr.Reader(['de', 'en'], gpu=False)
+        proposed_msg = reader.readtext('screenshots/check_proposed_msg.png', detail=0)
+        if proposed_msg == "":
+            return True
+        else:
+            return False
+
+    def send_proposed_msg(self):
+        """Clicks to the send button for proposed message"""
+        pyautogui.moveTo(x=1000, y=1000, duration=1)  # click on the send button
+        pyautogui.click()
+
     async def checks_new_task(self):
         """checks if new tasks are available"""
         while True:
@@ -175,6 +210,7 @@ class ChatBot:
             reader = easyocr.Reader(['de', 'en'], gpu=False)
             moderator_text = reader.readtext('screenshots/waiting_for_session.png', detail=0)
             if moderator_text == "Please wait for your next session...":
+                self.session = True
                 return True
 
             await asyncio.sleep(2)
@@ -185,25 +221,30 @@ class ChatBot:
         delta = datetime.now() - self.start_time
         while delta.total_seconds() < self.time:
             if await self.checks_new_task():
-                # random wait time
-                random.seed()
-                random_wait_time = random.random() * 5
-                time.sleep(random_wait_time)
+                while self.session == True:
+                    # random wait time
+                    random.seed()
+                    random_wait_time = random.random() * 5
+                    time.sleep(random_wait_time)
 
-                # collects data
-                self.collect_messages()
-                self.collect_customer_data()
-                self.collect_moderator_data()
+                    # collects data
+                    self.collect_messages()
+                    self.collect_customer_data()
+                    self.collect_moderator_data()
 
-                # generate a response
-                answer = self.generate_message()
-                self.write_message(answer)
-                self.log_activity()
-                os.remove("screenshots/customer_data.png")
-                os.remove("screenshots/customer_custom_data.png")
-                os.remove("screenshots/moderator_data.png")
-                os.remove("screenshots/moderator_custom_data.png")
-                os.remove("screenshots/waiting_for_session.png")
+                    # check for pregenerated message
+                    if self.check_prosed_msg():
+                        self.send_proposed_msg()
+                    else:
+                        # generate own response
+                        answer = self.generate_message()
+                        self.write_message(answer)
+                        self.log_activity()
+                        os.remove("screenshots/customer_data.png")
+                        os.remove("screenshots/customer_custom_data.png")
+                        os.remove("screenshots/moderator_data.png")
+                        os.remove("screenshots/moderator_custom_data.png")
+                        os.remove("screenshots/waiting_for_session.png")
 
             delta = datetime.now() - self.start_time
 
