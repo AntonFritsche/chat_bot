@@ -1,5 +1,4 @@
 import pyautogui
-import torch
 import asyncio
 import easyocr
 import random
