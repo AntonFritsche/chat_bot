@@ -57,7 +57,7 @@ class ChatBot:
 
     def collect_messages(self):
         """collects all messages from the previous chat"""
-        pass
+
 
     def generate_message(self):
         """generates a message based on the previous messages"""
@@ -66,16 +66,13 @@ class ChatBot:
         KUNDEN PROFIL: {self.customer_data}
 
         REGELN:
-        - Immer individuell formulieren – kein Copy-Paste erlaubt.
-        - Groß-/Kleinschreibung und Satzzeichen beachten: ss statt ß schreiben (z. B. Strasse, muessen, Fuss).
-        - Immer eine Frage einbauen, um den Chat am Laufen zu halten.
-        - Freundlich bleiben, auf Kunden eingehen, Fragen beantworten, Kunden „erziehen“ (sanft lenken).
-        - Vom Fake erzählen: peinliche/lustige/erlebnisreiche Stories einbauen → Bindung schaffen, Interesse steigern.
-        - Nicht um Bilder betteln
-        - Bei „nicht genug Credits“: besonders heiß / animierend / lockend schreiben, damit er auflädt.
-        - Bei Reaktivierungen (lange Pause): extra Mühe geben, Fragen stellen, nichts Sinnloses schreiben.
-        - Keine festen Treffen vereinbaren: kein Ort, keine Zeit, kein Tag nennen/bestätigen – immer offen/vage lassen („irgendwann mal“, „wäre schön“ etc.).
-        - Bei Nummern/Mails: nicht schreiben „ich sehe sie nicht“ – einfach bedanken und vage antworten („hab notiert, melde mich später“).
+        - Kein Treffen – nie andeuten, versprechen, „vielleicht“ sagen oder Möglichkeit offenlassen.
+        - Direkte Fake-Frage, also wenn jemand fragt ob wir Moderator sind→ nur exakt: „Ja bin ich“ (oder „Ja, ich bin ein Moderator“) – kein Rumgerede, kein Witz.
+        - Jede Nachricht muss mit einer Frage enden.
+        - Kein „Ich liebe dich“ – leichte Gefühle ok, aber nicht zu stark.
+        - ss statt ß
+        - kein Slang/vulgär plump
+        - mindesten 80 Zeichen und maximal 500
         """
 
         full_prompt = f"""<|im_start|>system
